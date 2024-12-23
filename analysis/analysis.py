@@ -1,80 +1,85 @@
-import matplotlib.pyplot as plt
-from scipy.stats import ttest_ind
+import numpy as np
 
 class Analysis:
-    def __init__(self, data, interface_col='Interface'):
+    def __init__(self):
         """
         Initializes the Analysis class.
+        """
+        pass
+
+    def score_sueq(self, sueq_df):
+        """
+        Calculates the mean score for the S_UEQ questionnaire.
 
         Parameters:
-        - data: DataFrame containing the self-report data.
-        - interface_col: The column name indicating which interface the user used.
-        """
-        self.data = data
-        self.interface_col = interface_col
-
-    def perform_ttest(self, metric, group1='Interface_1', group2='Interface_2'):
-        """
-        Performs a t-test for a given metric between two interfaces.
-
-        Parameters:
-        - metric: The column name of the metric to analyze.
-        - group1: Name of the first group in the interface column.
-        - group2: Name of the second group in the interface column.
+        - sueq_df: DataFrame containing S_UEQ data (columns C-J).
 
         Returns:
-        - A dictionary with the metric, t-statistic, and p-value.
+        - The mean score across all S_UEQ scales.
         """
-        group1_data = self.data[self.data[self.interface_col] == group1][metric]
-        group2_data = self.data[self.data[self.interface_col] == group2][metric]
+        return sueq_df.iloc[:, 1:].mean(axis=1).mean()  # Exclude the interface column, then average per user and overall
 
-        stat, p_value = ttest_ind(group1_data, group2_data, nan_policy='omit')
-        return {'metric': metric, 'stat': stat, 'p_value': p_value}
 
-    def plot_metric(self, metric):
+    # def score_sueq(self, sueq_df):
+    #     """
+    #     Calculates the scores for the S_UEQ questionnaire.
+
+    #     Parameters:
+    #     - sueq_df: DataFrame containing S_UEQ data (columns C-J).
+
+    #     Returns:
+    #     - A dictionary with the average score for each UX scale.
+    #     """
+    #     # Define the mapping of scales to columns
+    #     scales = {
+    #         'Attractiveness': [2],        # Adjust indices as per actual column positions
+    #         'Perspicuity': [3, 4],
+    #         'Efficiency': [5, 6],
+    #         'Dependability': [7, 8],
+    #         'Stimulation': [9, 10],
+    #         'Novelty': [11, 12],
+    #     }
+
+    #     scores = {}
+    #     for scale, cols in scales.items():
+    #         # Average per user for the given scale, then overall mean
+    #         scores[scale] = sueq_df.iloc[:, cols].mean(axis=1).mean()
+    #     return scores
+
+
+
+    def score_sus(self, sus_df):
         """
-        Generates a boxplot for a given metric across interfaces.
+        Calculates the SUS score from the SUS questionnaire.
 
         Parameters:
-        - metric: The column name of the metric to visualize.
-        """
-        self.data.boxplot(column=metric, by=self.interface_col, grid=False)
-        plt.title(f'{metric} by {self.interface_col}')
-        plt.suptitle('')
-        plt.xlabel(self.interface_col)
-        plt.ylabel(metric)
-        plt.show()
-
-    def summarize_results(self, ttest_results):
-        """
-        Summarizes t-test results into a printable format.
-
-        Parameters:
-        - ttest_results: List of t-test result dictionaries.
-        """
-        for result in ttest_results:
-            print(f"Metric: {result['metric']}")
-            print(f"t-statistic: {result['stat']:.2f}, p-value: {result['p_value']:.4f}\n")
-
-    def analyze_metrics(self, metrics, group1='Interface_1', group2='Interface_2'):
-        """
-        Analyzes a list of metrics by performing t-tests and plotting results.
-
-        Parameters:
-        - metrics: List of metric column names to analyze.
-        - group1: Name of the first group in the interface column.
-        - group2: Name of the second group in the interface column.
+        - sus_df: DataFrame containing SUS data (columns K-T).
 
         Returns:
-        - List of t-test results for all metrics.
+        - The overall SUS score (0–100 scale).
         """
-        results = []
-        for metric in metrics:
-            # Perform t-test
-            result = self.perform_ttest(metric, group1, group2)
-            results.append(result)
+        # SUS has 10 items; adjust indices if needed
+        positive_items = [1, 3, 5, 7, 9]
+        negative_items = [2, 4, 6, 8, 10]
 
-            # Generate plot
-            self.plot_metric(metric)
+        # Subtract 1 for positive items, reverse score for negatives
+        sus_scores = sus_df.copy()
+        sus_scores.iloc[:, positive_items] -= 1
+        sus_scores.iloc[:, negative_items] = 5 - sus_scores.iloc[:, negative_items]
 
-        return results
+        # Sum and scale
+        sus_total = sus_scores.sum(axis=1) * 2.5  # Scale to 0–100
+        return sus_total.mean()  # Average SUS score
+
+    def score_tlx(self, tlx_df):
+        """
+        Calculates the average score for NASA-TLX (Raw TLX).
+
+        Parameters:
+        - tlx_df: DataFrame containing NASA-TLX data (columns U-Z).
+
+        Returns:
+        - The average workload score across all dimensions.
+        """
+        # Average each row (user), then overall mean
+        return tlx_df.mean(axis=1).mean()
