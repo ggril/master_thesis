@@ -45,6 +45,8 @@ def process_dataframe(df):
     
     return processed_df
 
+
+
 def split_data(df):
     """
     Splits the input DataFrame into three separate DataFrames representing three questionnaires after dropping the first row.
@@ -66,7 +68,7 @@ def split_data(df):
     - ValueError: If the input DataFrame does not have at least 26 columns.
     """
 
-    # 1. Drop the first row
+    # 1. Drop the first row 
     df_dropped = df.iloc[1:].copy()
 
     # 2. Verify that the DataFrame has at least 26 columns
