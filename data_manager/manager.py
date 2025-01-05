@@ -5,7 +5,7 @@ class DataManager:
         """
         Initialize the DataManager with the path to the csv file.
 
-        Args: Path to the csv file.
+        Args: Path to the csv files.
         """
         self.responses_data_path = responses_data_path
         self.pupil_data_path = pupil_data_path
@@ -32,7 +32,7 @@ class DataManager:
         self.responses_data = self.responses_data.iloc[1:]
         self.responses_data.rename(columns={"Q1":"user_id", "Q2":"UI"}, inplace=True) 
 
-        # Drop the last column if it's named "Unnamed: 26"
+        # Drop the last column if needed"
         if "Unnamed: 26" in self.responses_data.columns:
             self.responses_data = self.responses_data.drop(columns=["Unnamed: 26"])
             

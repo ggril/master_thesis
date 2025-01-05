@@ -87,7 +87,7 @@ class AnalysisManager:
         Returns:
         - pd.DataFrame: A DataFrame with 'User ID', 'Interface Category', and 'Mean SUS Score'.
         """
-        # SUS has 10 items; adjust indices if needed
+        # SUS has 10 items
         positive_items = [0, 2, 4, 6, 8]  # 0-based indexing for items 1,3,5,7,9
         negative_items = [1, 3, 5, 7, 9]  # 0-based indexing for items 2,4,6,8,10
     
@@ -99,7 +99,7 @@ class AnalysisManager:
         group_col = self.sus.columns[1]
     
         # Select SUS items as a DataFrame
-        # Assuming SUS items are from the 3rd column onward (0-based index 2)
+        # Assuming SUS items are from the 3rd column onward (first is ID, second is Group)
         sus_items_df = sus_scores.iloc[:, 2:]
     
         # Ensure SUS items are numeric, coercing errors to NaN
