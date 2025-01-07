@@ -1,6 +1,7 @@
+import numpy as np
 import pandas as pd
-import scipy.stats as stats
 import matplotlib.pyplot as plt
+import scipy.stats as stats
 
 class AnalysisManager:
     def __init__(self, sueq: pd.DataFrame, sus: pd.DataFrame, tlx: pd.DataFrame):
@@ -162,7 +163,7 @@ class AnalysisManager:
         })
         
         return result_df
-
+    
     def combine_scores(self, ueq_scores, sus_scores, tlx_scores):
         """
         Combines the scores from the UEQ, SUS, and TLX into a single DataFrame.
@@ -212,53 +213,216 @@ class AnalysisManager:
         plt.tight_layout()
         plt.show()
 
-
     @staticmethod
     def t_stat(df):
         """
-        Performs t-tests for questionnaire scores based on interface category and formats the results.
-        
+        Performs paired t-tests for questionnaire scores for dependent measures,
+        aligning data based on User ID.
+
         Parameters:
             df (pd.DataFrame): The combined dataframe containing questionnaire scores.
-        
+                Must contain 'User ID', 'Interface Category' (1 = Interface 1, 2 = Interface 2),
+                and the questionnaire score columns.
+
         Returns:
-            pd.DataFrame: A formatted DataFrame with t-statistics and p-values for each score column.
+            pd.DataFrame: A DataFrame with t-statistics and p-values for each score column.
         """
-        # Ensure 'Interface Category' exists and is numeric
-        if 'Interface Category' not in df.columns:
-            raise ValueError("Column 'Interface Category' is missing from the DataFrame.")
-        df['Interface Category'] = pd.to_numeric(df['Interface Category'], errors='coerce')
-        
-        # Split the dataframe by interface category
-        interface_1 = df[df['Interface Category'] == 1]
-        interface_2 = df[df['Interface Category'] == 2]
-        
-        # Check for empty groups
-        if interface_1.empty or interface_2.empty:
-            raise ValueError("One or both interface categories contain no data.")
-        
-        # Perform t-tests for each score column
-        t_results = []
+        # Ensure required columns are present
+        required_columns = ['User ID', 'Interface Category']
         score_columns = ['Overall Pragmatic Quality', 'Overall Hedonic Quality', 
                         'Overall UEQ Score', 'Mean SUS Score', 'Mean TLX Score']
         
+        missing_columns = [col for col in required_columns + score_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"The following required columns are missing: {missing_columns}")
+
+        # Ensure 'Interface Category' is numeric
+        df['Interface Category'] = pd.to_numeric(df['Interface Category'], errors='coerce')
+
+        # Pivot the data to align based on User ID
+        df_pivoted = df.pivot(index='User ID', columns='Interface Category', values=score_columns)
+
+        # Initialize results list
+        t_results = []
+
+        # Iterate through the score columns
         for column in score_columns:
-            if column not in df:
-                raise ValueError(f"Column '{column}' is missing from the DataFrame.")
-            
-            # Handle missing data
-            group1 = interface_1[column].dropna()
-            group2 = interface_2[column].dropna()
-            
-            if group1.empty or group2.empty:
-                t_results.append([column, float('nan'), float('nan')])
+            # Extract paired data for the current column
+            group1 = df_pivoted[(column, 1)]  # Interface Category 1
+            group2 = df_pivoted[(column, 2)]  # Interface Category 2
+
+            # Drop NaN values for valid pairing
+            paired_data = pd.concat([group1, group2], axis=1, keys=['Group1', 'Group2']).dropna()
+
+            if paired_data.empty:
+                t_stat, p_value = float('nan'), float('nan')
             else:
-                t_stat, p_value = stats.ttest_ind(group1, group2, equal_var=False, nan_policy='omit')
-                t_results.append([column, t_stat, p_value])
-        
-        # Convert results to DataFrame
-        results_df = pd.DataFrame(t_results, columns=['Measure', 'T-Statistic', 'P-Value'])
-        results_df['T-Statistic'] = results_df['T-Statistic'].round(4)
-        results_df['P-Value'] = results_df['P-Value'].round(4)
-        
+                # Perform paired t-test
+                t_stat, p_value = stats.ttest_rel(paired_data['Group1'], paired_data['Group2'])
+
+            # Append the results
+            t_results.append({
+                'Measure': column,
+                'T-Statistic': round(t_stat, 4) if pd.notna(t_stat) else 'NaN',
+                'P-Value': round(p_value, 4) if pd.notna(p_value) else 'NaN'
+            })
+
+        # Convert results to a DataFrame
+        results_df = pd.DataFrame(t_results)
         return results_df
+
+    def calculate_phi_coefficient(self, col1, col2):
+        """
+        Calculate the Phi coefficient for two binary categorical variables.
+
+        Parameters:
+        - col1: pd.Series, First binary variable
+        - col2: pd.Series, Second binary variable
+
+        Returns:
+        - float: Phi coefficient
+        """
+        contingency_table = pd.crosstab(col1, col2)
+        chi2, _, _, _ = stats.chi2_contingency(contingency_table)
+        phi = np.sqrt(chi2 / len(col1))
+        return phi
+
+    def calculate_point_biserial(self, binary_col, continuous_col):
+        """
+        MIGHT USE SPEARMANN?
+        Calculate Point-Biserial correlation between a binary variable and a continuous variable.
+
+        Parameters:
+        - binary_col: pd.Series, Binary variable
+        - continuous_col: pd.Series, Continuous variable
+
+        Returns:
+        - float, float: Correlation coefficient, p-value
+        """
+        return stats.pointbiserialr(binary_col, continuous_col)
+    
+
+    def correlations_and_ttests(self, combined_df):
+        """
+        Perform correlation and paired t-test analyses for the combined dataset.
+
+        Parameters:
+        - combined_df: pd.DataFrame, Combined dataset with all questionnaire scores.
+
+        Returns:
+        - correlations: List of tuples (variable1, variable2, correlation, p-value)
+        - ttests: List of tuples (measure, grouping_variable, t-statistic, p-value)
+        """
+        # Normalize column names to avoid issues with spaces or casing
+        combined_df.columns = combined_df.columns.str.strip()
+
+        # Column names
+        rank_col = 'UI rank'
+        order_col = 'UI order'
+        questionnaire_columns = [
+            'Overall Pragmatic Quality',
+            'Overall Hedonic Quality',
+            'Overall UEQ Score',
+            'Mean SUS Score',
+            'Mean TLX Score'
+        ]
+
+        # Lists to store results
+        correlations = []
+        ttests = []
+
+        # Phi coefficient for UI rank ↔ UI order
+        phi = self.calculate_phi_coefficient(combined_df[rank_col], combined_df[order_col])
+        correlations.append((rank_col, order_col, phi, 'Phi coefficient (no p-value)'))
+
+        # Point-Biserial correlations for each questionnaire score with UI rank and UI order
+        for column in questionnaire_columns:
+            if column in combined_df.columns:
+                # Point-Biserial with UI rank
+                pb_corr_rank, pb_p_rank = self.calculate_point_biserial(combined_df[rank_col], combined_df[column])
+                correlations.append((rank_col, column, pb_corr_rank, pb_p_rank))
+
+                # Point-Biserial with UI order
+                pb_corr_order, pb_p_order = self.calculate_point_biserial(combined_df[order_col], combined_df[column])
+                correlations.append((order_col, column, pb_corr_order, pb_p_order))
+
+        # Perform paired t-tests for each questionnaire score based on UI rank and UI order
+        for grouping_col in [rank_col, order_col]:
+            for column in questionnaire_columns:
+                if column not in combined_df.columns:
+                    continue
+
+                # Ensure data contains exactly one entry for each User ID and grouping variable
+                valid_users = combined_df.groupby('User ID')[grouping_col].nunique()
+                valid_users = valid_users[valid_users == 2].index  # Only include users with both groupings
+                paired_df = combined_df[combined_df['User ID'].isin(valid_users)]
+
+                # Separate data for grouping variable (e.g., UI rank or UI order)
+                group1 = paired_df[paired_df[grouping_col] == 1][['User ID', column]].set_index('User ID')
+                group2 = paired_df[paired_df[grouping_col] == 2][['User ID', column]].set_index('User ID')
+
+                # Merge groups by User ID to ensure proper pairing
+                paired_data = pd.concat([group1, group2], axis=1, keys=['Group1', 'Group2']).dropna()
+
+                # Perform paired t-test if data is available
+                if paired_data.empty:
+                    t_stat, p_value = float('nan'), float('nan')
+                else:
+                    t_stat, p_value = stats.ttest_rel(paired_data['Group1'], paired_data['Group2'])
+                    # Ensure scalar values
+                    t_stat = float(t_stat) if isinstance(t_stat, np.ndarray) else t_stat
+                    p_value = float(p_value) if isinstance(p_value, np.ndarray) else p_value
+
+                # Append results
+                ttests.append((column, grouping_col, t_stat, p_value))
+
+        return correlations, ttests
+    
+    def present_findings(self, correlations, ttests):
+        """
+        Present findings in a formatted table with significance indicators.
+
+        Parameters:
+        - correlations: list of tuples, each containing (variable1, variable2, correlation, p-value)
+        - ttests: list of tuples, each containing (measure, grouping_variable, t-statistic, p-value)
+
+        Returns:
+        - pd.DataFrame: Formatted DataFrames for correlations and t-tests.
+        """
+        # Process correlation results
+        corr_results = []
+        for var1, var2, corr, p_value in correlations:
+            significance = ''
+            if isinstance(p_value, (int, float)):  # Handle Phi coefficient (no p-value)
+                if p_value < 0.05:
+                    significance = '*'
+                if p_value < 0.01:
+                    significance = '**'
+            corr_results.append({
+                'Relationship': f"{var1} ↔ {var2}",
+                'Correlation (r)': f"{corr:.2f}{significance}",
+                'P-Value': f"{p_value:.4f}" if isinstance(p_value, (int, float)) else p_value
+            })
+
+        # Process t-test results
+        ttest_results = []
+        for measure, group, t_stat, p_value in ttests:
+            significance = ''
+            if isinstance(p_value, (int, float)):
+                if p_value < 0.05:
+                    significance = '*'
+                if p_value < 0.01:
+                    significance = '**'
+            ttest_results.append({
+                'Measure': measure,
+                'Grouping Variable': group,
+                'T-Statistic (t)': f"{t_stat:.2f}{significance}" if isinstance(t_stat, (int, float)) else "NaN",
+                'P-Value': f"{p_value:.4f}" if isinstance(p_value, (int, float)) else "NaN"
+            })
+
+        # Convert to DataFrames for tabular display
+        corr_df = pd.DataFrame(corr_results)
+        ttest_df = pd.DataFrame(ttest_results)
+
+        return corr_df, ttest_df
+
