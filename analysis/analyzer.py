@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.stats as stats
+import pingouin as pg
+import seaborn as sns
 
 class AnalysisManager:
     def __init__(self, sueq: pd.DataFrame, sus: pd.DataFrame, tlx: pd.DataFrame):
@@ -185,6 +187,50 @@ class AnalysisManager:
         return combined_scores
     
     @staticmethod
+    def calculate_cohen_d(df, group_col, score_columns):
+        """
+        Calculate Cohen's d for multiple questionnaire scores grouped by a specific column.
+
+        Parameters:
+        - df: pd.DataFrame, the dataset containing the scores and grouping column.
+        - group_col: str, the column by which to group data (e.g., 'Interface Category', 'UI order', 'UI rank').
+        - score_columns: list of str, columns for which to compute Cohen's d.
+
+        Returns:
+        - pd.DataFrame: A DataFrame with Cohen's d for each score and group.
+        """
+        results = []
+
+        # Iterate through each score column
+        for score in score_columns:
+            if score not in df.columns:
+                raise ValueError(f"Column '{score}' not found in the DataFrame.")
+
+            # Check unique groups in the group_col
+            unique_groups = df[group_col].unique()
+            if len(unique_groups) != 2:
+                raise ValueError(f"Column '{group_col}' must have exactly two groups for Cohen's d calculation.")
+
+            # Split the data into two groups
+            group1 = df[df[group_col] == unique_groups[0]][score].dropna()
+            group2 = df[df[group_col] == unique_groups[1]][score].dropna()
+
+            # Compute Cohen's d
+            cohen_d = pg.compute_effsize(group1, group2, eftype='cohen')
+
+            # Append the result
+            results.append({
+                'Measure': score,
+                'Grouping Variable': group_col,
+                'Group 1': unique_groups[0],
+                'Group 2': unique_groups[1],
+                'Cohen\'s d': round(cohen_d, 4),
+            })
+
+        # Convert results to a DataFrame
+        return pd.DataFrame(results)
+    
+    @staticmethod
     def visualize_scores(df):
         """
         Visualizes the average scores by interface category using barplots.
@@ -301,6 +347,36 @@ class AnalysisManager:
         """
         return stats.pointbiserialr(binary_col, continuous_col)
     
+    def gender_cor(self, data, score_columns):
+        """
+        Calculate Point-Biserial correlations between Gender and each score column.
+
+        Parameters:
+        - data: pd.DataFrame, dataset containing the scores and Gender column.
+        - score_columns: list of str, columns containing the scores.
+
+        Returns:
+        - pd.DataFrame: DataFrame showing correlations and p-values between Gender and scores.
+        """
+
+        # Map gender to binary values (F -> 1, M -> 0)
+        binary_gender = data['Gender'].map({'F': 1, 'M': 0})
+
+        # Calculate correlations for each score column
+        results = []
+        for score in score_columns:
+            if data[score].dtype.kind not in "bifc":  # Check for numeric data
+                raise ValueError(f"Score column '{score}' must be numeric.")
+            corr, p_value = self.calculate_point_biserial(binary_gender, data[score])
+            results.append({
+                'Score Column': score.replace('_', ' ').capitalize(),
+                'Correlation (r)': round(corr, 4),
+                'P-Value': round(p_value, 4)
+            })
+
+        # Convert results to DataFrame
+        return pd.DataFrame(results)
+    
 
     def correlations_and_ttests(self, combined_df):
         """
@@ -377,6 +453,7 @@ class AnalysisManager:
                 ttests.append((column, grouping_col, t_stat, p_value))
 
         return correlations, ttests
+
     
     def present_findings(self, correlations, ttests):
         """
@@ -425,4 +502,100 @@ class AnalysisManager:
         ttest_df = pd.DataFrame(ttest_results)
 
         return corr_df, ttest_df
+    
+    @staticmethod
+    def scatter_matrix(data, score_columns, independent_variable):
+        """
+        Create a scatterplot matrix using all combinations of scoring columns,
+        with the independent variable represented as color.
+
+        Parameters:
+        - data: pd.DataFrame, the dataset containing the scores and independent variable.
+        - score_columns: list of str, the scoring columns to be used as dependent variables.
+        - independent_variable: str, the independent variable used for coloring the points.
+
+        Returns:
+        - None: Displays the scatterplot matrix.
+        """
+        sns.set_theme(style="whitegrid", color_codes=True)
+
+        # Normalize column names
+        data.columns = data.columns.str.strip().str.lower().str.replace(" ", "_")
+        score_columns = [col.strip().lower().replace(" ", "_") for col in score_columns]
+        independent_variable = independent_variable.strip().lower().replace(" ", "_")
+
+        # Ensure necessary columns exist
+        missing_columns = [col for col in score_columns + [independent_variable] if col not in data.columns]
+        if missing_columns:
+            raise KeyError(f"The following columns are missing from the dataset: {missing_columns}")
+
+        # Create the PairGrid
+        g = sns.PairGrid(data=data, vars=score_columns, height=3)
+        
+        # Map scatter plots with color based on the independent variable
+        g.map(
+            sns.scatterplot,
+            hue=data[independent_variable],  # Use independent variable as color
+            palette="viridis",
+            alpha=0.7
+        )
+
+        # Add a legend
+        g.add_legend(title=independent_variable.replace("_", " ").capitalize())
+        
+        # Add title
+        g.fig.suptitle(
+            f"Scatterplot Matrix of Scores Colored by {independent_variable.replace('_', ' ').capitalize()}",
+            fontsize=16
+        )
+        g.fig.tight_layout()
+        g.fig.subplots_adjust(top=0.93)  # Adjust title position
+
+        plt.show()
+
+
+    @staticmethod
+    def visualize_scores_by(df, independent_variable):
+        """
+        Visualizes the average scores grouped by the desired independent variable using barplots.
+
+        Parameters:
+            df (pd.DataFrame): The combined dataframe containing questionnaire scores.
+            independent_variable (str): The column by which the data should be grouped.
+
+        Returns:
+            None: Displays a barplot of the average scores.
+        """
+        # Normalize column names
+        df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
+        independent_variable = independent_variable.strip().lower().replace(" ", "_")
+
+        # List of score columns
+        score_columns = [
+            'overall_pragmatic_quality',
+            'overall_hedonic_quality',
+            'overall_ueq_score',
+            'mean_sus_score',
+            'mean_tlx_score'
+        ]
+
+        # Ensure the independent variable and score columns exist
+        if independent_variable not in df.columns:
+            raise KeyError(f"The independent variable '{independent_variable}' is not in the dataset.")
+        missing_columns = [col for col in score_columns if col not in df.columns]
+        if missing_columns:
+            raise KeyError(f"The following score columns are missing from the dataset: {missing_columns}")
+
+        # Group by the independent variable and calculate mean scores
+        mean_scores = df.groupby(independent_variable)[score_columns].mean()
+
+        # Plot the barplot
+        mean_scores.plot(kind='bar', figsize=(10, 6))
+        plt.title(f"Average Scores by {independent_variable.replace('_', ' ').capitalize()}")
+        plt.ylabel("Average Score")
+        plt.xticks(rotation=0)
+        plt.legend(title="Scores", loc="upper right")
+        plt.tight_layout()
+        plt.show()
+
 

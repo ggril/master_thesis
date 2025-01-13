@@ -1,4 +1,5 @@
 import pandas as pd
+import pingouin as pg
 
 class DataManager:
     def __init__(self, responses_data_path: str, pupil_data_path: str):
@@ -93,4 +94,76 @@ class DataManager:
         tlx_df = pd.concat([first_two_cols, tlx_cols], axis=1).reset_index(drop=True)
 
         return sueq_df, sus_df, tlx_df
+    
+    @staticmethod
+    def calculate_cronbach_alpha(data):
+        """
+        Calculate Cronbach's alpha for each questionnaire and its subscales.
 
+        Parameters:
+        - data: pd.DataFrame, the dataset containing questionnaire items.
+
+        Returns:
+        - pd.DataFrame: A DataFrame with Cronbach's alpha and confidence intervals for each questionnaire.
+        """
+        # Define the structure of the questionnaires
+        questionnaire_structure = {
+            'UEQ Pragmatic Quality': ['Q4a', 'Q4b', 'Q4c', 'Q4d'],  # Replace with actual column names
+            'UEQ Hedonic Quality': ['Q4e', 'Q4f', 'Q4g', 'Q4h'],    # Replace with actual column names
+            'Overall UEQ Score': ['Q4a', 'Q4b', 'Q4c', 'Q4d', 'Q4e', 'Q4f', 'Q4g', 'Q4h'],  # All UEQ items
+            'SUS': ['Q6a', 'Q6b', 'Q6c', 'Q6d', 'Q6e', 'Q6f', 'Q6g', 'Q6h', 'Q6i', 'Q6j'],  # SUS items
+            'NASA-TLX': ['Q8', 'Q9', 'Q10', 'Q11', 'Q12', 'Q13']     # TLX items
+        }
+
+        results = []
+
+        for questionnaire, items in questionnaire_structure.items():
+            if not all(item in data.columns for item in items):
+                raise ValueError(f"Some items for {questionnaire} are missing from the data: {items}")
+
+            # Create a copy of the columns to avoid SettingWithCopyWarning
+            subset_data = data[items].copy()
+
+            # Ensure all columns are numeric
+            subset_data = subset_data.apply(pd.to_numeric, errors='coerce')
+
+            # Handle missing values (drop rows with NaN)
+            subset_data = subset_data.dropna()
+
+            # Calculate Cronbach's alpha
+            alpha, ci = pg.cronbach_alpha(data=subset_data)
+
+            # Append the results
+            results.append({
+                'Questionnaire': questionnaire,
+                'Cronbach\'s Alpha': round(alpha, 4),
+                'CI Lower': round(ci[0], 4),
+                'CI Upper': round(ci[1], 4)
+            })
+
+        # Convert results to a DataFrame
+        return pd.DataFrame(results)
+
+    @staticmethod
+    def assign_gender(dataframe, list_females):
+        """
+        Assign gender to a dataframe based on a list of female User IDs,
+        and place the 'gender' column next to the 'user_id' column.
+
+        Parameters:
+        - dataframe: pd.DataFrame, the dataset containing the user IDs.
+        - list_females: list of int, the User IDs of females.
+
+        Returns:
+        - pd.DataFrame: The updated dataframe with a new 'gender' column positioned next to 'user_id'.
+        """
+
+        # Assign gender based on the User ID
+        dataframe['Gender'] = dataframe['User ID'].apply(lambda x: 'F' if x in list_females else 'M')
+
+        # Reorder columns to place 'gender' next to 'user_id'
+        columns = list(dataframe.columns)
+        columns.insert(columns.index('User ID') + 1, columns.pop(columns.index('Gender')))
+        dataframe = dataframe[columns]
+
+        return dataframe.head()
