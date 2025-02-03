@@ -185,8 +185,70 @@ class AnalysisManager:
         combined_scores = pd.merge(merged_scores, tlx_scores, on=['User ID', 'Interface Category'], how='outer')
 
         return combined_scores
-
+    
     @staticmethod
+    def calculate_statistics(df, columns):
+        """
+        Calculate basic statistics for specified columns in a DataFrame and return the results as a table.
+
+        For each column, the following statistics are computed:
+            - Mean
+            - Standard Deviation
+            - Median
+            - Interquartile Range (IQR)
+
+        Parameters:
+            df (pd.DataFrame): The DataFrame containing the data.
+            columns (list): List of column names to calculate statistics for.
+
+        Returns:
+            pd.DataFrame: A table with columns 'Measure', 'Mean', 'Standard Deviation', 'Median', and 'IQR'.
+        """
+        stats = []
+        for col in columns:
+            mean = df[col].mean()
+            std = df[col].std()
+            median = df[col].median()
+            iqr = df[col].quantile(0.75) - df[col].quantile(0.25)
+            stats.append({
+                'Measure': col,
+                'Mean': mean.round(2),
+                'Standard Deviation': std.round(2),
+                'Median': median,
+                'IQR': iqr.round(2)
+            })
+        return pd.DataFrame(stats)
+    
+    @staticmethod
+    def calculate_statistics_by(df, group_col, columns):
+        """
+        Calculate basic statistics for specified columns in a DataFrame, grouped by a categorical variable,
+        and return the results as a combined table.
+
+        For each group and each column, the following statistics are computed:
+            - Mean
+            - Standard Deviation
+            - Median
+            - Interquartile Range (IQR)
+
+        Parameters:
+            df (pd.DataFrame): The DataFrame containing the data.
+            group_col (str): The name of the column used for grouping (e.g., 'Interface Category').
+            columns (list): List of column names to calculate statistics for.
+
+        Returns:
+            pd.DataFrame: A combined table that includes the group value along with the computed statistics.
+        """
+        grouped_stats = []
+        for group_value, group_df in df.groupby(group_col):
+            stats_df = AnalysisManager.calculate_statistics(group_df, columns)
+            # Insert the group value as a new column to indicate the group
+            stats_df.insert(0, group_col, group_value)
+            grouped_stats.append(stats_df)
+        # Concatenate all group-specific tables into one DataFrame
+        return pd.concat(grouped_stats, ignore_index=True)
+
+
     # def calculate_cohen_d(df, group_col, score_columns):
     #     """
     #     Calculate Cohen's d for multiple questionnaire scores grouped by a specific column.
@@ -740,55 +802,55 @@ class AnalysisManager:
         return corr_df, test_df
 
 
-        @staticmethod
-        def scatter_matrix(data, score_columns, independent_variable):
-            """
-            Create a scatterplot matrix using all combinations of scoring columns,
-            with the independent variable represented as color.
+    @staticmethod
+    def scatter_matrix(data, score_columns, independent_variable):
+        """
+        Create a scatterplot matrix using all combinations of scoring columns,
+        with the independent variable represented as color.
 
-            Parameters:
-            - data: pd.DataFrame, the dataset containing the scores and independent variable.
-            - score_columns: list of str, the scoring columns to be used as dependent variables.
-            - independent_variable: str, the independent variable used for coloring the points.
+        Parameters:
+        - data: pd.DataFrame, the dataset containing the scores and independent variable.
+        - score_columns: list of str, the scoring columns to be used as dependent variables.
+        - independent_variable: str, the independent variable used for coloring the points.
 
-            Returns:
-            - None: Displays the scatterplot matrix.
-            """
-            sns.set_theme(style="whitegrid", color_codes=True)
+        Returns:
+        - None: Displays the scatterplot matrix.
+        """
+        sns.set_theme(style="whitegrid", color_codes=True)
 
-            # Normalize column names
-            data.columns = data.columns.str.strip().str.lower().str.replace(" ", "_")
-            score_columns = [col.strip().lower().replace(" ", "_") for col in score_columns]
-            independent_variable = independent_variable.strip().lower().replace(" ", "_")
+        # Normalize column names
+        data.columns = data.columns.str.strip().str.lower().str.replace(" ", "_")
+        score_columns = [col.strip().lower().replace(" ", "_") for col in score_columns]
+        independent_variable = independent_variable.strip().lower().replace(" ", "_")
 
-            # Ensure necessary columns exist
-            missing_columns = [col for col in score_columns + [independent_variable] if col not in data.columns]
-            if missing_columns:
-                raise KeyError(f"The following columns are missing from the dataset: {missing_columns}")
+        # Ensure necessary columns exist
+        missing_columns = [col for col in score_columns + [independent_variable] if col not in data.columns]
+        if missing_columns:
+            raise KeyError(f"The following columns are missing from the dataset: {missing_columns}")
 
-            # Create the PairGrid
-            g = sns.PairGrid(data=data, vars=score_columns, height=3)
+        # Create the PairGrid
+        g = sns.PairGrid(data=data, vars=score_columns, height=3)
 
-            # Map scatter plots with color based on the independent variable
-            g.map(
-                sns.scatterplot,
-                hue=data[independent_variable],  # Use independent variable as color
-                palette="viridis",
-                alpha=0.7
-            )
+        # Map scatter plots with color based on the independent variable
+        g.map(
+            sns.scatterplot,
+            hue=data[independent_variable],  # Use independent variable as color
+            palette="viridis",
+            alpha=0.7
+        )
 
-            # Add a legend
-            g.add_legend(title=independent_variable.replace("_", " ").capitalize())
+        # Add a legend
+        g.add_legend(title=independent_variable.replace("_", " ").capitalize())
 
-            # Add title
-            g.fig.suptitle(
-                f"Scatterplot Matrix of Scores Colored by {independent_variable.replace('_', ' ').capitalize()}",
-                fontsize=16
-            )
-            g.fig.tight_layout()
-            g.fig.subplots_adjust(top=0.93)  # Adjust title position
+        # Add title
+        g.fig.suptitle(
+            f"Scatterplot Matrix of Scores Colored by {independent_variable.replace('_', ' ').capitalize()}",
+            fontsize=16
+        )
+        g.fig.tight_layout()
+        g.fig.subplots_adjust(top=0.93)  # Adjust title position
 
-            plt.show()
+        plt.show()
 
 
     @staticmethod
