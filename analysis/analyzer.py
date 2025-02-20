@@ -4,6 +4,15 @@ import matplotlib.pyplot as plt
 import scipy.stats as stats
 import pingouin as pg
 import seaborn as sns
+from statsmodels.graphics.gofplots import qqplot
+import math
+
+""" Class AnalysisManager consists of functions relevant for data analysis and visualization which are:
+* scoring functions that return questionnaire scores
+* statistical functions that calculate basic statistics, perform normality tests, and calculate effect sizes
+* visualization functions that create QQ plots and bar plots
+* hypothesis testing functions that perform paired t-tests and Wilcoxon signed-rank tests
+* correlation functions that calculate Phi coefficient and Point-Biserial correlation"""
 
 class AnalysisManager:
     def __init__(self, sueq: pd.DataFrame, sus: pd.DataFrame, tlx: pd.DataFrame):
@@ -247,7 +256,55 @@ class AnalysisManager:
             grouped_stats.append(stats_df)
         # Concatenate all group-specific tables into one DataFrame
         return pd.concat(grouped_stats, ignore_index=True)
+    
+    @staticmethod
+    def accept_normality(p, alpha=0.05):
+        """
+        Determine if the p-value is greater than the alpha threshold,
+        meaning that the data can be considered normally distributed.
 
+        Parameters:
+        - p: float, p-value from a normality test.
+        - alpha: float, significance level. Default is 0.05.
+
+        Returns:
+        - bool: True if p-value is greater than alpha (i.e. normality accepted), False otherwise.
+        """
+        return p > alpha
+
+    @staticmethod
+    def levene_test(df, group_cols, value_cols, center='median'):
+        """
+        Perform Levene's test for equal variances on multiple dependent variables grouped by one or more categorical variables.
+        
+        For each combination of a grouping column and a value column, the function computes Levene's test statistic 
+        and p-value.
+        
+        Parameters:
+            df (pd.DataFrame): The DataFrame containing the data.
+            group_cols (list): List of column names used to group the data (categorical variables).
+            value_cols (list): List of column names of the dependent variables to test for variance equality.
+            center (str, optional): The measure of central tendency to use ('mean' or 'median'). Defaults to 'median'.
+            
+        Returns:
+            pd.DataFrame: A table containing the results for each combination. The columns in the returned DataFrame are:
+                        'Grouping Column', 'Value Column', 'Levene Statistic', and 'p-value'.
+        """
+        results = []
+        for group_col in group_cols:
+            grouped = df.groupby(group_col)
+            for value_col in value_cols:
+                # Create a list of the series for each group after dropping missing values.
+                groups = [group[value_col].dropna() for _, group in grouped]
+                # Perform Levene's test on the list of groups.
+                stat, p_value = stats.levene(*groups, center=center)
+                results.append({
+                    'Grouping Column': group_col,
+                    'Value Column': value_col,
+                    'Levene Statistic': stat,
+                    'p-value': p_value
+                })
+        return pd.DataFrame(results)
 
     # def calculate_cohen_d(df, group_col, score_columns):
     #     """
@@ -372,6 +429,44 @@ class AnalysisManager:
 
         return pd.DataFrame(results)
 
+    @staticmethod
+    def show_qq(data, columns):
+        """
+        Generate QQ plots for multiple columns in a DataFrame.
+
+        Parameters:
+            data (pd.DataFrame): The dataset containing the columns.
+            columns (list): A list of column names for which to generate QQ plots.
+        
+        Returns:
+            matplotlib.figure.Figure: A figure containing all QQ plots arranged in a grid.
+        """
+        n_plots = len(columns)
+        # Determine grid size: use a near-square grid
+        n_cols = int(math.ceil(math.sqrt(n_plots)))
+        n_rows = int(math.ceil(n_plots / n_cols))
+        
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 5, n_rows * 4))
+        
+        # Ensure axes is a flat iterable even if there's only one plot
+        if n_plots == 1:
+            axes = [axes]
+        else:
+            axes = axes.flatten()
+        
+        # Create a QQ plot for each specified column
+        for i, col in enumerate(columns):
+            qqplot(data[col].dropna(), line='s', ax=axes[i])
+            axes[i].set_title(f"QQ Plot for '{col}'")
+        
+        # Remove any extra subplots if there are more axes than plots
+        for j in range(n_plots, len(axes)):
+            fig.delaxes(axes[j])
+        
+        fig.tight_layout()
+        plt.show()
+        return fig
+
     
     @staticmethod
     def visualize_scores(df):
@@ -402,7 +497,7 @@ class AnalysisManager:
         plt.tight_layout()
         plt.show()
 
-    @staticmethod
+    
     # def t_stat(df):
     #     """
     #     Performs paired t-tests for questionnaire scores for dependent measures,
@@ -460,6 +555,7 @@ class AnalysisManager:
     #     results_df = pd.DataFrame(t_results)
     #     return results_df
 
+    @staticmethod
     def wilcoxon(df):
         """
         Performs paired Wilcoxon signed‐rank tests for questionnaire scores for dependent measures,
@@ -735,22 +831,6 @@ class AnalysisManager:
         return correlations, tests
 
 
-    @staticmethod
-    def accept_normality(p, alpha=0.05):
-        """
-        Determine if the p-value is greater than the alpha threshold,
-        meaning that the data can be considered normally distributed.
-
-        Parameters:
-        - p: float, p-value from a normality test.
-        - alpha: float, significance level. Default is 0.05.
-
-        Returns:
-        - bool: True if p-value is greater than alpha (i.e. normality accepted), False otherwise.
-        """
-        return p > alpha
-
-
     def present_findings(self, correlations, tests):
         """
         Present findings in a formatted table with significance indicators.
@@ -762,7 +842,7 @@ class AnalysisManager:
         Returns:
         - (corr_df, test_df): Two pd.DataFrame objects for correlations and Wilcoxon test results.
         """
-        import pandas as pd
+
 
         # Process correlation results
         corr_results = []
